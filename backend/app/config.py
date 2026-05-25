@@ -6,7 +6,8 @@ class Settings(BaseSettings):
     # Supabase
     SUPABASE_URL: str
     SUPABASE_SERVICE_ROLE_KEY: str
-    SUPABASE_JWT_SECRET: str
+    # SUPABASE_JWT_SECRET: str
+    # No JWT secret needed — ES256 tokens are verified via JWKS public key
 
     # Google Gemini
     GEMINI_API_KEY: str

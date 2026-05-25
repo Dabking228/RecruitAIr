@@ -1,5 +1,6 @@
-# app/auth/dependencies.py
 import jwt
+from jwt import PyJWKClient
+from jwt.exceptions import PyJWKClientError
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.config import settings
@@ -7,6 +8,12 @@ from app.config import settings
 # HTTPBearer automatically reads the Authorization: Bearer <token> header
 security = HTTPBearer()
 
+# Supabase signs JWTs with RS256 (asymmetric). We fetch their public key from
+# the JWKS endpoint so we can verify tokens without holding any secret.
+# PyJWKClient caches the keys and auto-rotates when Supabase rotates theirs.
+_jwks_client = PyJWKClient(
+    f"{settings.SUPABASE_URL}/auth/v1/.well-known/jwks.json"
+)
 
 class CurrentUser:
     """Represents the authenticated user extracted from the JWT."""
@@ -29,10 +36,11 @@ async def get_current_user(
     token = credentials.credentials
 
     try:
+        signing_key = _jwks_client.get_signing_key_from_jwt(token)
         payload = jwt.decode(
             token,
-            settings.SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
+            signing_key.key,
+            algorithms=["ES256"],
             audience="authenticated",   # Supabase always sets this audience
         )
     except jwt.ExpiredSignatureError:
@@ -40,7 +48,7 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Your session has expired. Please log in again.",
         )
-    except jwt.InvalidTokenError as e:
+    except (jwt.InvalidTokenError, PyJWKClientError) as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid authentication token: {str(e)}",
