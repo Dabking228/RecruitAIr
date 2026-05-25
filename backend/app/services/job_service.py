@@ -84,3 +84,38 @@ def update_job_status(job_id: str, recruiter_id: str, status: str) -> dict:
     if not result.data:
         raise ValueError("Job not found or you do not own this job.")
     return result.data[0]
+
+
+def save_job_requirements(job_id: str, requirements: list[dict]) -> list[dict]:
+    """
+    Saves the recruiter-confirmed requirements for a job.
+
+    Strategy: delete-then-insert.
+    We delete all existing requirements first, then insert the
+    confirmed ones. This is simpler than trying to diff and update
+    individual rows, and safe for the MVP because requirements are
+    only saved once the recruiter clicks Confirm.
+    """
+    # Step 1: Remove any previously saved requirements
+    supabase.table("job_requirements").delete().eq("job_id", job_id).execute()
+
+    if not requirements:
+        return []
+
+    # Step 2: Build the insert payload
+    rows = [
+        {
+            "job_id": job_id,
+            "requirement_type": req["requirement_type"],
+            "name": req["name"],
+            "description": req.get("description"),
+            "importance": req["importance"],
+            "weight": float(req.get("weight", 1.0)),
+            "evidence_expected": bool(req.get("evidence_expected", True)),
+        }
+        for req in requirements
+    ]
+
+    # Step 3: Insert all rows in one database call (more efficient than one-by-one)
+    result = supabase.table("job_requirements").insert(rows).execute()
+    return result.data or []
