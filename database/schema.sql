@@ -125,7 +125,7 @@ CREATE TABLE public.documents (
 CREATE TABLE public.claims (
     id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     candidate_id        UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    application_id      UUID NOT NULL REFERENCES public.applications(id) ON DELETE CASCADE,
+    application_id      UUID REFERENCES public.applications(id) ON DELETE CASCADE,
     claim_text          TEXT NOT NULL,
     claim_type          TEXT NOT NULL CHECK (claim_type IN (
                             'skill', 'project', 'certification',
