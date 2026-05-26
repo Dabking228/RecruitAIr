@@ -118,6 +118,23 @@ export interface RecruiterApplicationDetail {
   match_scores: FullMatchScore[] | null
 }
 
+export type EmailDraftStatus = 'draft' | 'approved' | 'sent'
+
+export interface EmailDraft {
+  id: string
+  application_id: string
+  subject: string
+  body: string
+  status: EmailDraftStatus
+  created_at: string
+}
+
+// Shape returned by /email/generate (not yet saved)
+export interface PendingEmailDraft {
+  subject: string
+  body: string
+}
+
 /** List all open jobs (for candidate browsing) */
 export const getOpenJobs = () =>
   apiGet<{ jobs: OpenJob[]; total: number }>('/api/jobs/open')
@@ -184,4 +201,40 @@ export const getInterviewQuestions = (applicationId: string) =>
 export const deleteInterviewQuestion = (applicationId: string, questionId: string) =>
   apiDelete<{ message: string }>(
     `/api/applications/${applicationId}/questions/${questionId}`,
+  )
+
+/** Recruiter: ask Gemini to generate a draft — does NOT save */
+export const generateEmailDraft = (applicationId: string) =>
+  apiPost<PendingEmailDraft>(
+    `/api/applications/${applicationId}/email/generate`,
+    {},
+  )
+
+/** Recruiter: save the edited draft */
+export const saveEmailDraft = (
+  applicationId: string,
+  subject: string,
+  body: string,
+) =>
+  apiPost<{ message: string; draft: EmailDraft }>(
+    `/api/applications/${applicationId}/email`,
+    { subject, body },
+  )
+
+/** Recruiter: get current email draft (null if none) */
+export const getEmailDraft = (applicationId: string) =>
+  apiGet<{ draft: EmailDraft | null }>(`/api/applications/${applicationId}/email`)
+
+/** Recruiter: approve the draft */
+export const approveEmailDraft = (applicationId: string) =>
+  apiPut<{ message: string; draft: EmailDraft }>(
+    `/api/applications/${applicationId}/email/approve`,
+    {},
+  )
+
+/** Recruiter: mark as sent → application status → interview_invited */
+export const markEmailSent = (applicationId: string) =>
+  apiPut<{ message: string }>(
+    `/api/applications/${applicationId}/email/send`,
+    {},
   )

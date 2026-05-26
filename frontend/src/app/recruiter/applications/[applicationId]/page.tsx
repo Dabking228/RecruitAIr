@@ -9,10 +9,18 @@ import {
   saveQuestions,
   getInterviewQuestions,
   deleteInterviewQuestion,
+  generateEmailDraft,
+  saveEmailDraft,
+  getEmailDraft,
+  approveEmailDraft,
+  markEmailSent,
   type RecruiterApplicationDetail,
   type PendingQuestion,
   type InterviewQuestion,
   type QuestionType,
+  type EmailDraft,
+  type PendingEmailDraft,
+  type EmailDraftStatus,
 } from '@/lib/api/applications'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -65,15 +73,23 @@ export default function ApplicationDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
 
+  const [emailDraft, setEmailDraft] = useState<EmailDraft | null>(null)
+  const [pendingEmail, setPendingEmail] = useState<PendingEmailDraft | null>(null)
+  const [isGeneratingEmail, setIsGeneratingEmail] = useState(false)
+  const [isSavingEmail, setIsSavingEmail] = useState(false)
+  const [emailError, setEmailError] = useState<string | null>(null)
+
   // Load application detail + any existing questions on mount
   useEffect(() => {
     Promise.all([
       getApplicationDetail(applicationId),
       getInterviewQuestions(applicationId),
+      getEmailDraft(applicationId),
     ])
-      .then(([appData, questionsData]) => {
+      .then(([appData, questionsData, emailData]) => {
         setApplication(appData)
         setSavedQuestions(questionsData.questions)
+        setEmailDraft(emailData.draft)
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false))
@@ -122,6 +138,54 @@ export default function ApplicationDetailPage() {
       setSavedQuestions((prev) => prev.filter((q) => q.id !== questionId))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Delete failed.')
+    }
+  }
+
+  async function handleGenerateEmail() {
+    setIsGeneratingEmail(true)
+    setEmailError(null)
+    setPendingEmail(null)
+    try {
+      const result = await generateEmailDraft(applicationId)
+      setPendingEmail(result)
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : 'Generation failed.')
+    } finally {
+      setIsGeneratingEmail(false)
+    }
+  }
+
+  async function handleSaveEmail() {
+    if (!pendingEmail) return
+    setIsSavingEmail(true)
+    try {
+      const result = await saveEmailDraft(applicationId, pendingEmail.subject, pendingEmail.body)
+      setEmailDraft(result.draft)
+      setPendingEmail(null)
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : 'Save failed.')
+    } finally {
+      setIsSavingEmail(false)
+    }
+  }
+
+  async function handleApproveEmail() {
+    try {
+      const result = await approveEmailDraft(applicationId)
+      setEmailDraft(result.draft)
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : 'Approval failed.')
+    }
+  }
+
+  async function handleMarkSent() {
+    try {
+      await markEmailSent(applicationId)
+      // Refresh the email draft to show 'sent' status
+      const updated = await getEmailDraft(applicationId)
+      setEmailDraft(updated.draft)
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : 'Failed to mark as sent.')
     }
   }
 
@@ -333,6 +397,170 @@ export default function ApplicationDetailPage() {
                   </button>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── Interview Email Section ──────────────────────────── */}
+        <div>
+          <h2 className="text-lg font-bold mb-1">Interview Email</h2>
+          <p className="text-sm text-gray-500 mb-4">
+            AI writes a personalised invitation email based on the candidate&apos;s
+            profile and interview topics. Edit before saving.
+          </p>
+
+          {emailError && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertDescription>{emailError}</AlertDescription>
+            </Alert>
+          )}
+
+          {/* Generate button — shown when not generating and no pending draft */}
+          {!isGeneratingEmail && pendingEmail === null && !emailDraft && (
+            <Button onClick={handleGenerateEmail}>
+              ✉️ Generate Email Draft
+            </Button>
+          )}
+
+          {/* Regenerate button — shown when a draft exists and no pending */}
+          {!isGeneratingEmail && pendingEmail === null && emailDraft && emailDraft.status !== 'sent' && (
+            <Button variant="outline" onClick={handleGenerateEmail}>
+              🔄 Regenerate Email
+            </Button>
+          )}
+
+          {/* Generating state */}
+          {isGeneratingEmail && (
+            <Card className="border-blue-200 bg-blue-50">
+              <CardContent className="py-8 text-center">
+                <p className="text-blue-700 font-medium mb-1">Writing the email...</p>
+                <p className="text-blue-600 text-sm">
+                  Gemini is personalising the invitation. Takes 5–10 seconds.
+                </p>
+                <div className="mt-4 flex justify-center">
+                  <div className="h-2 w-32 bg-blue-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-blue-500 rounded-full animate-pulse w-full" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ── Pending (editable) state ───────────────────────── */}
+          {pendingEmail !== null && !isGeneratingEmail && (
+            <div className="space-y-3">
+              <p className="text-sm text-gray-500">
+                Edit the email below — fill in the <span className="font-mono bg-gray-100 px-1 rounded text-xs">[DATE]</span>,{' '}
+                <span className="font-mono bg-gray-100 px-1 rounded text-xs">[TIME]</span>, and{' '}
+                <span className="font-mono bg-gray-100 px-1 rounded text-xs">[MEETING LINK OR LOCATION]</span>{' '}
+                placeholders before saving.
+              </p>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                  Subject
+                </label>
+                <input
+                  type="text"
+                  value={pendingEmail.subject}
+                  onChange={(e) => setPendingEmail({ ...pendingEmail, subject: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                  Body
+                </label>
+                <textarea
+                  value={pendingEmail.body}
+                  onChange={(e) => setPendingEmail({ ...pendingEmail, body: e.target.value })}
+                  rows={14}
+                  className="w-full border rounded-lg px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-1">
+                <Button onClick={handleSaveEmail} disabled={isSavingEmail}>
+                  {isSavingEmail ? 'Saving...' : 'Save Draft'}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setPendingEmail(null)}
+                  disabled={isSavingEmail}
+                >
+                  Discard
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Saved draft view ──────────────────────────────── */}
+          {emailDraft && pendingEmail === null && (
+            <div className="space-y-3 mt-4">
+
+              {/* Status badge */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-gray-700">Status:</span>
+                {emailDraft.status === 'draft' && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 font-medium">
+                    Draft
+                  </span>
+                )}
+                {emailDraft.status === 'approved' && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-medium">
+                    Approved ✓
+                  </span>
+                )}
+                {emailDraft.status === 'sent' && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-800 font-medium">
+                    Sent ✉️
+                  </span>
+                )}
+              </div>
+
+              {/* Email preview */}
+              <Card>
+                <CardContent className="pt-4 space-y-3">
+                  <div>
+                    <p className="text-xs text-gray-400 uppercase tracking-wide font-medium mb-0.5">Subject</p>
+                    <p className="text-sm font-medium text-gray-900">{emailDraft.subject}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400 uppercase tracking-wide font-medium mb-0.5">Body</p>
+                    <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">
+                      {emailDraft.body}
+                    </pre>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Action buttons based on status */}
+              {emailDraft.status === 'draft' && (
+                <div className="flex gap-3">
+                  <Button onClick={handleApproveEmail}>
+                    ✓ Approve Email
+                  </Button>
+                </div>
+              )}
+
+              {emailDraft.status === 'approved' && (
+                <div className="flex gap-3">
+                  <Button onClick={handleMarkSent}>
+                    ✉️ Mark as Sent
+                  </Button>
+                  <p className="text-xs text-gray-400 self-center">
+                    This will move the candidate to &quot;Interview Invited&quot; status.
+                  </p>
+                </div>
+              )}
+
+              {emailDraft.status === 'sent' && (
+                <p className="text-sm text-green-700">
+                  ✅ Email sent. Candidate has been moved to Interview Invited status.
+                </p>
+              )}
+
             </div>
           )}
         </div>

@@ -1,7 +1,7 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.auth.dependencies import get_current_user, require_candidate, require_recruiter, CurrentUser
-from app.services import application_service, interview_service
+from app.services import application_service, interview_service, email_service
 from app.services.match_service import run_match_scoring
 from app.db.supabase_client import supabase as db
 
@@ -171,6 +171,125 @@ async def delete_question(
     return {"message": "Question deleted."}
 
 
+@router.put("/{application_id}/status")
+async def update_status(
+    application_id: str,
+    request: dict,  # simple dict for now: {"status": "shortlisted"}
+    current_user: CurrentUser = Depends(require_recruiter),
+):
+    """Recruiter updates an application status."""
+    new_status = request.get("status")
+    try:
+        updated = application_service.update_application_status(
+            application_id=application_id,
+            recruiter_id=current_user.user_id,
+            new_status=new_status,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if not updated:
+        raise HTTPException(status_code=404, detail="Application not found.")
+
+    return {"message": f"Application status updated to '{new_status}'.", "application": updated}
+
+
+# ── Email draft routes ────────────────────────────────────────
+# POST .../email/generate → AI writes draft (does NOT save)
+# POST .../email          → recruiter saves edited draft
+# GET  .../email          → read current draft
+# PUT  .../email/approve  → recruiter approves
+# PUT  .../email/send     → mark as sent, application → interview_invited
+
+@router.post("/{application_id}/email/generate")
+async def generate_email(
+    application_id: str,
+    current_user: CurrentUser = Depends(require_recruiter),
+):
+    """
+    Calls Gemini and returns a draft email subject + body.
+    Does NOT save anything — recruiter edits it in the browser first.
+    """
+    try:
+        draft = email_service.generate_email_draft(
+            application_id=application_id,
+            recruiter_id=current_user.user_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return draft   # {"subject": "...", "body": "..."}
+
+
+@router.post("/{application_id}/email")
+async def save_email(
+    application_id: str,
+    body: dict,   # {"subject": "...", "body": "..."}
+    current_user: CurrentUser = Depends(require_recruiter),
+):
+    """Saves (or replaces) the recruiter-edited email draft."""
+    try:
+        saved = email_service.save_email_draft(
+            application_id=application_id,
+            subject=body.get("subject", ""),
+            body=body.get("body", ""),
+            recruiter_id=current_user.user_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return {"message": "Email draft saved.", "draft": saved}
+
+
+@router.get("/{application_id}/email")
+async def get_email(
+    application_id: str,
+    current_user: CurrentUser = Depends(require_recruiter),
+):
+    """Returns the current email draft, or null if none exists."""
+    draft = email_service.get_email_draft(application_id)
+    return {"draft": draft}
+
+
+@router.put("/{application_id}/email/approve")
+async def approve_email(
+    application_id: str,
+    current_user: CurrentUser = Depends(require_recruiter),
+):
+    """Recruiter marks the draft as approved and ready to send."""
+    try:
+        updated = email_service.approve_email_draft(
+            application_id=application_id,
+            recruiter_id=current_user.user_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {"message": "Email draft approved.", "draft": updated}
+
+
+@router.put("/{application_id}/email/send")
+async def mark_email_sent(
+    application_id: str,
+    current_user: CurrentUser = Depends(require_recruiter),
+):
+    """
+    Marks the email as sent and updates the application status
+    to 'interview_invited'. The candidate will see this in their list.
+    """
+    try:
+        result = email_service.mark_as_sent(
+            application_id=application_id,
+            recruiter_id=current_user.user_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return result
+
+
 @router.get("/{application_id}")
 async def get_application(
     application_id: str,
@@ -203,24 +322,3 @@ async def get_application(
     return app
 
 
-@router.put("/{application_id}/status")
-async def update_status(
-    application_id: str,
-    request: dict,  # simple dict for now: {"status": "shortlisted"}
-    current_user: CurrentUser = Depends(require_recruiter),
-):
-    """Recruiter updates an application status."""
-    new_status = request.get("status")
-    try:
-        updated = application_service.update_application_status(
-            application_id=application_id,
-            recruiter_id=current_user.user_id,
-            new_status=new_status,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-    if not updated:
-        raise HTTPException(status_code=404, detail="Application not found.")
-
-    return {"message": f"Application status updated to '{new_status}'.", "application": updated}
