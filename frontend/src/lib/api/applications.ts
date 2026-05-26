@@ -135,6 +135,19 @@ export interface PendingEmailDraft {
   body: string
 }
 
+export interface CandidateReport {
+  executive_summary: string
+  strengths: string[]
+  evidence_highlights: string[]
+  evidence_gaps: string[]
+  concerns: string[]
+  recommended_next_step: string
+  // Attached context from the service
+  candidate_name: string
+  job_title: string
+  scores: FullMatchScore
+}
+
 /** List all open jobs (for candidate browsing) */
 export const getOpenJobs = () =>
   apiGet<{ jobs: OpenJob[]; total: number }>('/api/jobs/open')
@@ -236,5 +249,12 @@ export const approveEmailDraft = (applicationId: string) =>
 export const markEmailSent = (applicationId: string) =>
   apiPut<{ message: string }>(
     `/api/applications/${applicationId}/email/send`,
+    {},
+  )
+
+/** Recruiter: generate a full candidate assessment report (not saved) */
+export const generateCandidateReport = (applicationId: string) =>
+  apiPost<CandidateReport>(
+    `/api/applications/${applicationId}/report/generate`,
     {},
   )

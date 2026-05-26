@@ -242,8 +242,13 @@ export default function ApplicationDetailPage() {
         {/* Score summary */}
         {score && (
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-base">AI Match Scores</CardTitle>
+              <Link href={`/recruiter/applications/${applicationId}/report`}>
+                <Button size="sm" variant="outline">
+                  📄 Full Report
+                </Button>
+              </Link>
             </CardHeader>
             <CardContent className="flex gap-3 flex-wrap">
               <ScoreChip label="Job Fit"    value={score.job_fit_score} />

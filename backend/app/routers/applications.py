@@ -1,7 +1,7 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.auth.dependencies import get_current_user, require_candidate, require_recruiter, CurrentUser
-from app.services import application_service, interview_service, email_service
+from app.services import application_service, interview_service, email_service, report_service
 from app.services.match_service import run_match_scoring
 from app.db.supabase_client import supabase as db
 
@@ -288,6 +288,29 @@ async def mark_email_sent(
         raise HTTPException(status_code=400, detail=str(e))
 
     return result
+
+
+# ── Candidate report ──────────────────────────────────────────
+
+@router.post("/{application_id}/report/generate")
+async def generate_report(
+    application_id: str,
+    current_user: CurrentUser = Depends(require_recruiter),
+):
+    """
+    Generates an AI candidate assessment report on demand.
+    Requires scoring to have run first (match_scores must exist).
+    Not saved to DB — regenerated fresh each call.
+    """
+    try:
+        report = report_service.generate_candidate_report(
+            application_id=application_id,
+            recruiter_id=current_user.user_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return report
 
 
 @router.get("/{application_id}")
