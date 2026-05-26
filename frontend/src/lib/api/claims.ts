@@ -27,6 +27,24 @@ export interface ExtractClaimsResponse {
   claims: Claim[]
 }
 
+export type EvidenceType = 'github' | 'link' | 'certificate' | 'screenshot' | 'file'
+
+export interface Evidence {
+  id: string
+  candidate_id: string
+  claim_id: string
+  evidence_type: EvidenceType
+  evidence_url: string
+  description: string | null
+  uploaded_at: string
+}
+
+export interface AddEvidenceData {
+  evidence_type: EvidenceType
+  evidence_url: string
+  description?: string
+}
+
 /** Triggers the full extraction pipeline (text extraction + AI claim extraction) */
 export const extractClaims = () =>
   apiPost<ExtractClaimsResponse>('/api/candidate/extract-claims', {})
@@ -45,3 +63,15 @@ export const confirmClaim = (claimId: string) =>
     `/api/claims/${claimId}/confirm`,
     {},
   )
+
+/** Returns all evidence for a specific claim */
+export const getClaimEvidence = (claimId: string) =>
+  apiGet<{ evidence: Evidence[] }>(`/api/claims/${claimId}/evidence`)
+
+/** Adds evidence to a claim — triggers automatic status update to 'verified' */
+export const addEvidence = (claimId: string, data: AddEvidenceData) =>
+  apiPost<Evidence>(`/api/claims/${claimId}/evidence`, data)
+
+/** Removes a piece of evidence from a claim */
+export const removeEvidence = (claimId: string, evidenceId: string) =>
+  apiDelete<{ message: string }>(`/api/claims/${claimId}/evidence/${evidenceId}`)

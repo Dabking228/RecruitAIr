@@ -11,12 +11,18 @@ logger = logging.getLogger(__name__)
 
 def get_candidate_claims(candidate_id: str, application_id: str | None = None) -> list[dict]:
     """
-    Returns all claims for a candidate, with their verification record joined.
+    Returns all claims for a candidate, with their verification record attached.
     Optionally filter by application_id.
+
+    Uses two explicit queries instead of a PostgREST nested embed because the
+    embedded select silently returns an empty array when PostgREST can't resolve
+    the FK relationship (e.g. schema cache not refreshed, ambiguous FK).
+    Two explicit queries are always reliable.
     """
+    # ── Step 1: fetch the claims ───────────────────────────────
     query = (
         supabase.table("claims")
-        .select("*, claim_verifications(*)")
+        .select("*")
         .eq("candidate_id", candidate_id)
     )
 
@@ -26,7 +32,30 @@ def get_candidate_claims(candidate_id: str, application_id: str | None = None) -
         query = query.is_("application_id", "null")
 
     result = query.order("created_at", desc=False).execute()
-    return result.data or []
+    claims = result.data or []
+
+    if not claims:
+        return []
+
+    # ── Step 2: fetch all verifications for these claims ───────
+    claim_ids = [c["id"] for c in claims]
+    verif_result = (
+        supabase.table("claim_verifications")
+        .select("*")
+        .in_("claim_id", claim_ids)
+        .execute()
+    )
+    verifications = verif_result.data or []
+
+    # ── Step 3: group by claim_id and attach ───────────────────
+    verif_by_claim: dict[str, list] = {}
+    for v in verifications:
+        verif_by_claim.setdefault(v["claim_id"], []).append(v)
+
+    for claim in claims:
+        claim["claim_verifications"] = verif_by_claim.get(claim["id"], [])
+
+    return claims
 
 
 def save_extracted_claims(
