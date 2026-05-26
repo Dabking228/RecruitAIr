@@ -69,6 +69,27 @@ export interface ReadinessResult {
   existing_application: CandidateApplication | null
 }
 
+export type Recommendation = 'strong_hire' | 'hire' | 'maybe' | 'pass'
+
+export interface FullMatchScore {
+  job_fit_score: number
+  evidence_confidence_score: number
+  required_skill_match: number
+  preferred_skill_match: number
+  experience_relevance_score: number
+  recommendation: Recommendation
+  created_at: string
+}
+
+export interface RecruiterApplication {
+  id: string
+  status: ApplicationStatus
+  submitted_at: string
+  candidate_id: string
+  candidate: { name: string | null; email: string }
+  match_scores: FullMatchScore[] | null
+}
+
 /** List all open jobs (for candidate browsing) */
 export const getOpenJobs = () =>
   apiGet<{ jobs: OpenJob[]; total: number }>('/api/jobs/open')
@@ -92,4 +113,17 @@ export const applyToJob = (jobId: string) =>
 export const getMyApplications = () =>
   apiGet<{ applications: CandidateApplication[]; total: number }>(
     '/api/applications/my',
+  )
+
+/** Recruiter: list all applications for a job with scores */
+export const getJobApplications = (jobId: string) =>
+  apiGet<{ applications: RecruiterApplication[]; total: number }>(
+    `/api/jobs/${jobId}/applications`,
+  )
+
+/** Recruiter: manually trigger (re-)scoring for an application */
+export const scoreApplication = (applicationId: string) =>
+  apiPost<{ message: string; score: FullMatchScore }>(
+    `/api/applications/${applicationId}/score`,
+    {},
   )

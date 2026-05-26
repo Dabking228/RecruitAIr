@@ -59,31 +59,54 @@ def get_existing_application(job_id: str, candidate_id: str) -> dict | None:
 
 def get_candidate_applications(candidate_id: str) -> list[dict]:
     """
-    Returns all applications for a candidate with job and company info joined.
+    Returns all applications for a candidate with job, company, and score info.
     Used by the candidate's My Applications page.
+
+    Uses explicit separate queries for match_scores rather than a PostgREST
+    FK embed — the embed silently returns [] when the schema cache hasn't
+    mapped the FK, causing scores to never appear on the frontend.
     """
+    # Query 1: applications with job + company info
     result = (
         supabase.table("applications")
         .select("""
-            *,
+            id, status, submitted_at, candidate_id,
             jobs(
                 title,
                 location,
                 work_mode,
                 employment_type,
                 companies(name)
-            ),
-            match_scores(
-                job_fit_score,
-                evidence_confidence_score,
-                recommendation
             )
         """)
         .eq("candidate_id", candidate_id)
         .order("submitted_at", desc=True)
         .execute()
     )
-    return result.data or []
+    apps = result.data or []
+
+    if not apps:
+        return []
+
+    # Query 2: match scores — explicit query, same pattern as get_applications_for_job
+    app_ids = [a["id"] for a in apps]
+    scores_result = (
+        supabase.table("match_scores")
+        .select("application_id, job_fit_score, evidence_confidence_score, recommendation")
+        .in_("application_id", app_ids)
+        .execute()
+    )
+    scores_by_app = {
+        s["application_id"]: s
+        for s in (scores_result.data or [])
+    }
+
+    # Attach scores — keep as a list to match the shape the frontend expects
+    for app in apps:
+        score = scores_by_app.get(app["id"])
+        app["match_scores"] = [score] if score else []
+
+    return apps
 
 
 def get_candidate_readiness(candidate_id: str) -> dict:
@@ -258,3 +281,71 @@ def update_application_status(
         .execute()
     )
     return result.data[0] if result.data else None
+
+
+def get_applications_for_job(job_id: str, recruiter_id: str) -> list[dict]:
+    """
+    Returns all applications for a job, with match scores attached.
+    Ownership check: the recruiter must own the job.
+    Used by the recruiter's candidate ranking page.
+    """
+    # Ownership check
+    job_check = (
+        supabase.table("jobs")
+        .select("id")
+        .eq("id", job_id)
+        .eq("recruiter_id", recruiter_id)
+        .execute()
+    )
+    if not job_check.data:
+        raise ValueError("Job not found.")
+
+    # Query 1: applications (base columns only — no embed)
+    apps_result = (
+        supabase.table("applications")
+        .select("id, status, submitted_at, candidate_id")
+        .eq("job_id", job_id)
+        .order("submitted_at", desc=True)
+        .execute()
+    )
+    apps = apps_result.data or []
+
+    if not apps:
+        return []
+
+    app_ids      = [a["id"]           for a in apps]
+    candidate_ids = [a["candidate_id"] for a in apps]
+
+    # Query 2: match scores — explicit query avoids PostgREST FK embed issues
+    # (embed silently returns [] when schema cache hasn't mapped the FK)
+    scores_result = (
+        supabase.table("match_scores")
+        .select(
+            "application_id, job_fit_score, evidence_confidence_score, "
+            "required_skill_match, preferred_skill_match, "
+            "experience_relevance_score, recommendation"
+        )
+        .in_("application_id", app_ids)
+        .execute()
+    )
+    scores_by_app = {
+        s["application_id"]: s
+        for s in (scores_result.data or [])
+    }
+
+    # Query 3: candidate name + email
+    users_result = (
+        supabase.table("users")
+        .select("id, name, email")
+        .in_("id", candidate_ids)
+        .execute()
+    )
+    users_by_id = {u["id"]: u for u in (users_result.data or [])}
+
+    # Assemble — frontend expects match_scores as a list (matches Supabase embed shape)
+    for app in apps:
+        score = scores_by_app.get(app["id"])
+        app["match_scores"] = [score] if score else []
+        app["candidate"]    = users_by_id.get(app["candidate_id"], {"name": None, "email": ""})
+
+    return apps

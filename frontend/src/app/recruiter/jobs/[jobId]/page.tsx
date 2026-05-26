@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import {
   getJob,
   parseJobDescription,
@@ -93,6 +93,7 @@ function RequirementCard({
 
 export default function JobDetailPage() {
   const { jobId } = useParams<{ jobId: string }>()
+  const router = useRouter()
 
   // Job data
   const [job, setJob] = useState<any>(null)
@@ -207,6 +208,13 @@ export default function JobDetailPage() {
               <Badge variant={job.status === 'open' ? 'default' : 'outline'}>
                 {job.status}
               </Badge>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => router.push(`/recruiter/jobs/${jobId}/candidates`)}
+              >
+                View Candidates
+              </Button>
             </div>
           </div>
         </div>

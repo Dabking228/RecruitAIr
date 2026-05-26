@@ -74,7 +74,7 @@ export default function JobsListPage() {
           <div className="space-y-4">
             {jobs.map((job) => (
               <Link key={job.id} href={`/recruiter/jobs/${job.id}`}>
-                <Card className="hover:shadow-md transition-shadow cursor-pointer">
+                <Card className="hover:shadow-md transition-shadow cursor-pointer mb-4">
                   <CardContent className="pt-5 pb-5">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">

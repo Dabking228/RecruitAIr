@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from app.auth.dependencies import require_recruiter, get_current_user, CurrentUser, require_candidate
 from app.services import job_service, company_service, application_service
 from app.schemas.job import CreateJobRequest, JobResponse, SaveRequirementsRequest
 from app.ai.job_parser import parse_job_description as ai_parse_job
+from app.services.match_service import run_match_scoring
 
 router = APIRouter()
 
@@ -87,6 +88,7 @@ async def get_job_public(
 @router.post("/{job_id}/apply")
 async def apply_to_job(
     job_id: str,
+    background_tasks: BackgroundTasks,
     current_user: CurrentUser = Depends(require_candidate),
 ):
     """
@@ -98,6 +100,10 @@ async def apply_to_job(
 
     Does NOT validate profile completeness — the candidate is shown
     a readiness check on the frontend but is not hard-blocked.
+
+    After creating the application row, scoring is kicked off in the
+    background so the candidate sees "Application submitted" instantly
+    rather than waiting 3-5 seconds for Gemini.
     """
     try:
         application = application_service.create_application(
@@ -109,6 +115,9 @@ async def apply_to_job(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
+
+    # Fire scoring in background — candidate doesn't wait for this
+    background_tasks.add_task(run_match_scoring, application["id"])
 
     return {
         "message": "Application submitted successfully.",
@@ -133,6 +142,27 @@ async def get_apply_readiness(
         "already_applied": existing is not None,
         "existing_application": existing,
     }
+
+
+@router.get("/{job_id}/applications")
+async def get_job_applications(
+    job_id: str,
+    current_user: CurrentUser = Depends(require_recruiter),
+):
+    """
+    Returns all applications for a job, sorted by submission date.
+    Includes match scores and candidate name/email.
+    Used by the recruiter's candidate ranking page.
+    """
+    try:
+        applications = application_service.get_applications_for_job(
+            job_id=job_id,
+            recruiter_id=current_user.user_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+    return {"applications": applications, "total": len(applications)}
 
 
 # ── Recruiter-facing routes (dynamic /{job_id} segment) ───────
