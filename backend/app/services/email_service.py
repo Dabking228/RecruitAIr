@@ -9,6 +9,7 @@ Manages the email draft lifecycle for interview invitations:
 import logging
 from app.db.supabase_client import supabase
 from app.ai.email_draft_generator import generate_email_draft as ai_generate_email
+from app.services import audit_service
 
 logger = logging.getLogger(__name__)
 
@@ -268,6 +269,14 @@ def mark_as_sent(application_id: str, recruiter_id: str) -> dict:
     logger.info(
         f"Email marked as sent for application {application_id}; "
         "application status → interview_invited"
+    )
+
+    audit_service.log_action(
+        user_id=recruiter_id,
+        action="email.sent",
+        target_type="application",
+        target_id=application_id,
+        metadata={"application_id": application_id},
     )
 
     return {"message": "Email marked as sent. Candidate notified of interview."}

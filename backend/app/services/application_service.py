@@ -5,6 +5,7 @@ moves the candidate through the hiring pipeline.
 """
 import logging
 from app.db.supabase_client import supabase
+from app.services import audit_service
 
 logger = logging.getLogger(__name__)
 
@@ -244,6 +245,15 @@ def create_application(job_id: str, candidate_id: str) -> dict:
         f"Application created: candidate={candidate_id}, job={job_id}, "
         f"application={application['id']}"
     )
+
+    audit_service.log_action(
+        user_id=candidate_id,
+        action="application.submitted",
+        target_type="application",
+        target_id=application["id"],
+        metadata={"job_id": job_id, "job_title": job.data[0]["title"]},
+    )
+
     return application
 
 
@@ -261,15 +271,17 @@ def update_application_status(
         raise ValueError(f"Invalid status: {new_status}")
 
     # Ownership check — recruiter must own the job
+    # Also select 'status' so we can record the old value in the audit log
     ownership = (
         supabase.table("applications")
-        .select("id, jobs(recruiter_id)")
+        .select("id, status, jobs(recruiter_id)")
         .eq("id", application_id)
         .execute()
     )
     if not ownership.data:
         return None
 
+    old_status = ownership.data[0]["status"]
     job_recruiter_id = ownership.data[0]["jobs"]["recruiter_id"]
     if job_recruiter_id != recruiter_id:
         raise ValueError("You do not have permission to update this application.")
@@ -280,6 +292,16 @@ def update_application_status(
         .eq("id", application_id)
         .execute()
     )
+
+    if result.data:
+        audit_service.log_action(
+            user_id=recruiter_id,
+            action="application.status_changed",
+            target_type="application",
+            target_id=application_id,
+            metadata={"old_status": old_status, "new_status": new_status},
+        )
+
     return result.data[0] if result.data else None
 
 

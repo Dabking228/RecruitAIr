@@ -10,6 +10,7 @@ Both paths call run_match_scoring(application_id).
 import logging
 from app.db.supabase_client import supabase
 from app.ai.candidate_matcher import score_candidate_against_job
+from app.services import audit_service
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,7 @@ def _get_candidate_claims_with_evidence(candidate_id: str) -> list[dict]:
     return enriched
 
 
-def run_match_scoring(application_id: str) -> dict:
+def run_match_scoring(application_id: str, user_id: str | None = None) -> dict:
     """
     Main entry point. Scores a candidate against a job and saves to match_scores.
 
@@ -168,6 +169,17 @@ def run_match_scoring(application_id: str) -> dict:
     logger.info(
         f"Score saved for application {application_id}: "
         f"fit={scores['job_fit_score']}, recommendation={scores['recommendation']}"
+    )
+
+    audit_service.log_action(
+        user_id=user_id,   # None when called as a BackgroundTask after apply
+        action="score.generated",
+        target_type="application",
+        target_id=application_id,
+        metadata={
+            "recommendation": scores["recommendation"],
+            "job_fit_score": scores["job_fit_score"],
+        },
     )
 
     return saved.data[0]

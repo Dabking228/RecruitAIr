@@ -148,6 +148,16 @@ export interface CandidateReport {
   scores: FullMatchScore
 }
 
+export interface AuditLog {
+  id: string
+  user_id: string | null
+  action: string
+  target_type: string | null
+  target_id: string | null
+  metadata: Record<string, unknown> | null
+  created_at: string
+}
+
 /** List all open jobs (for candidate browsing) */
 export const getOpenJobs = () =>
   apiGet<{ jobs: OpenJob[]; total: number }>('/api/jobs/open')
@@ -258,3 +268,7 @@ export const generateCandidateReport = (applicationId: string) =>
     `/api/applications/${applicationId}/report/generate`,
     {},
   )
+
+/** Recruiter: get recent audit logs scoped to their own applications */
+export const getAuditLogs = (limit = 50) =>
+  apiGet<{ logs: AuditLog[]; total: number }>(`/api/audit-logs?limit=${limit}`)

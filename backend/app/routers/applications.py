@@ -37,7 +37,7 @@ async def score_application(
     Useful after a candidate adds more evidence post-submission.
     """
     try:
-        score = run_match_scoring(application_id)
+        score = run_match_scoring(application_id, user_id=current_user.user_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except RuntimeError as e:

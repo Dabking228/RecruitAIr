@@ -30,7 +30,7 @@ export default async function RecruiterDashboard() {
         </h2>
         <p className="text-gray-500 mb-8">Recruiter Dashboard</p>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
           <Card>
             <CardHeader>
@@ -64,17 +64,35 @@ export default async function RecruiterDashboard() {
             </CardContent>
           </Card>
 
-          <Card className="border-gray-200 opacity-60">
+          <Card>
             <CardHeader>
               <CardTitle className="text-base">Candidates</CardTitle>
               <CardDescription>
-                Review applicants and AI reports
+                Review applicants, AI scores, and assessment reports
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Button variant="outline" className="w-full" disabled>
-                Coming in Phase 9 →
-              </Button>
+              <Link href="/recruiter/jobs">
+                <Button variant="outline" className="w-full">
+                  View Applicants →
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Activity Log</CardTitle>
+              <CardDescription>
+                Track submissions, AI scoring, and interview invitations
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link href="/recruiter/audit-logs">
+                <Button variant="outline" className="w-full">
+                  View Activity →
+                </Button>
+              </Link>
             </CardContent>
           </Card>
 

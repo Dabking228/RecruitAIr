@@ -8,6 +8,7 @@ Manages the full interview question lifecycle:
 import logging
 from app.db.supabase_client import supabase
 from app.ai.interview_question_generator import generate_interview_questions
+from app.services import audit_service
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +187,15 @@ def save_questions(
         raise RuntimeError("Failed to save interview questions.")
 
     logger.info(f"Saved {len(rows)} interview questions for application {application_id}")
+
+    audit_service.log_action(
+        user_id=recruiter_id,
+        action="questions.saved",
+        target_type="application",
+        target_id=application_id,
+        metadata={"question_count": len(rows)},
+    )
+
     return result.data
 
 

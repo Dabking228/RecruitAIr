@@ -74,7 +74,7 @@ export default function CompanyPage() {
         <header className="bg-white border-b px-8 py-4">
           <div className="max-w-3xl mx-auto flex items-center justify-between">
             <Link href="/recruiter/dashboard" className="text-blue-600 hover:underline text-sm">
-              ← Back to dashboard
+              ← Dashboard
             </Link>
           </div>
         </header>
@@ -142,7 +142,7 @@ export default function CompanyPage() {
       <header className="bg-white border-b px-8 py-4">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <Link href="/recruiter/dashboard" className="text-blue-600 hover:underline text-sm">
-            ← Back to dashboard
+            ← Dashboard
           </Link>
         </div>
       </header>

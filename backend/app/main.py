@@ -1,10 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import jobs, applications, candidates, documents, claims, ai, companies
-
-
 from app.config import settings
-from app.routers import jobs, applications, candidates, documents, claims, ai
+from app.routers import jobs, applications, candidates, documents, claims, ai, companies, audit
 
 # ── App initialisation ────────────────────────────────────────
 app = FastAPI(
@@ -39,6 +36,7 @@ app.include_router(documents.router,    prefix="/api/documents",    tags=["Docum
 app.include_router(claims.router,       prefix="/api/claims",       tags=["Claims"])
 app.include_router(ai.router,           prefix="/api/ai",           tags=["AI"])
 app.include_router(companies.router,    prefix="/api/companies",    tags=["Companies"])
+app.include_router(audit.router,        prefix="/api/audit-logs",   tags=["Audit"])
 
 # ── Health Check ──────────────────────────────────────────────
 @app.get("/health", tags=["Health"])
