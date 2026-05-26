@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from app.auth.dependencies import require_recruiter, get_current_user, CurrentUser
-from app.services import job_service, company_service
+from app.auth.dependencies import require_recruiter, get_current_user, CurrentUser, require_candidate
+from app.services import job_service, company_service, application_service
 from app.schemas.job import CreateJobRequest, JobResponse, SaveRequirementsRequest
 from app.ai.job_parser import parse_job_description as ai_parse_job
 
@@ -45,6 +45,99 @@ async def create_job(
     )
     return job
 
+
+# ── Candidate-facing routes ───────────────────────────────────
+# IMPORTANT: These MUST be defined before any /{job_id} routes.
+# FastAPI matches top-to-bottom: if /{job_id} appears first, a request
+# to /open is swallowed by that pattern with job_id="open", and the
+# correct handler is never reached.
+
+@router.get("/open")
+async def list_open_jobs(
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """
+    Returns all open jobs for candidates to browse.
+    Includes company name and industry.
+    """
+    jobs = application_service.get_open_jobs()
+    return {"jobs": jobs, "total": len(jobs)}
+
+
+
+
+@router.get("/{job_id}/public")
+async def get_job_public(
+    job_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """
+    Returns a job's full details and requirements for a candidate to review.
+    Only accessible if the job is open.
+    """
+    job = application_service.get_job_for_candidate(job_id)
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found or no longer accepting applications.",
+        )
+    return job
+
+
+@router.post("/{job_id}/apply")
+async def apply_to_job(
+    job_id: str,
+    current_user: CurrentUser = Depends(require_candidate),
+):
+    """
+    Candidate submits an application to a job.
+
+    Validates:
+    - Job is open
+    - Candidate has not already applied
+
+    Does NOT validate profile completeness — the candidate is shown
+    a readiness check on the frontend but is not hard-blocked.
+    """
+    try:
+        application = application_service.create_application(
+            job_id=job_id,
+            candidate_id=current_user.user_id,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+
+    return {
+        "message": "Application submitted successfully.",
+        "application": application,
+    }
+
+
+@router.get("/{job_id}/readiness")
+async def get_apply_readiness(
+    job_id: str,
+    current_user: CurrentUser = Depends(require_candidate),
+):
+    """
+    Returns the candidate's profile readiness before they apply.
+    Also checks if they have already applied to this specific job.
+    """
+    readiness = application_service.get_candidate_readiness(current_user.user_id)
+    existing = application_service.get_existing_application(job_id, current_user.user_id)
+
+    return {
+        **readiness,
+        "already_applied": existing is not None,
+        "existing_application": existing,
+    }
+
+
+# ── Recruiter-facing routes (dynamic /{job_id} segment) ───────
+# All routes below contain /{job_id} and must come AFTER any
+# fixed-string paths at the same level (e.g. /open above).
 
 @router.get("/{job_id}")
 async def get_job(

@@ -50,18 +50,32 @@ export default async function CandidateDashboard() {
             </div>
           </Link>
 
-          <div className="bg-gray-50 border border-dashed rounded-lg p-6 opacity-60">
-            <div className="text-2xl mb-2">🔍</div>
-            <h3 className="font-semibold text-gray-500">Browse Jobs</h3>
-            <p className="text-sm text-gray-400 mt-1">Coming soon</p>
-          </div>
-
           <Link href="/candidate/claims">
             <div className="bg-white border rounded-lg p-6 hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer">
               <div className="text-2xl mb-2">🔍</div>
               <h3 className="font-semibold">My Claims</h3>
               <p className="text-sm text-gray-500 mt-1">
                 Review what the AI extracted from your resume. Confirm accurate claims.
+              </p>
+            </div>
+          </Link>
+
+          <Link href="/candidate/jobs">
+            <div className="bg-white border rounded-lg p-6 hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer">
+              <div className="text-2xl mb-2">🔍</div>
+              <h3 className="font-semibold">Browse Jobs</h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Find open positions and apply with your evidence-backed profile.
+              </p>
+            </div>
+          </Link>
+
+          <Link href="/candidate/applications">
+            <div className="bg-white border rounded-lg p-6 hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer">
+              <div className="text-2xl mb-2">📋</div>
+              <h3 className="font-semibold">My Applications</h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Track the status of your submitted applications.
               </p>
             </div>
           </Link>
