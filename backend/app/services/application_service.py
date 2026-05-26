@@ -349,3 +349,56 @@ def get_applications_for_job(job_id: str, recruiter_id: str) -> list[dict]:
         app["candidate"]    = users_by_id.get(app["candidate_id"], {"name": None, "email": ""})
 
     return apps
+
+
+def get_application_for_recruiter(application_id: str, recruiter_id: str) -> dict | None:
+    """
+    Returns a single application with job info, match scores, and candidate
+    user info — for the recruiter's candidate detail view.
+
+    Returns None if not found or recruiter doesn't own the job.
+    Uses explicit separate queries for all FK relationships — PostgREST
+    embed for match_scores silently returns [] when schema cache hasn't
+    mapped the FK, causing scores to never appear on the frontend.
+    """
+    # Query 1: application base + job info (no match_scores embed)
+    result = (
+        supabase.table("applications")
+        .select("id, candidate_id, status, submitted_at, jobs(id, title, recruiter_id)")
+        .eq("id", application_id)
+        .execute()
+    )
+    if not result.data:
+        return None
+
+    application = result.data[0]
+    job = application.get("jobs", {})
+
+    # Ownership check
+    if job.get("recruiter_id") != recruiter_id:
+        return None
+
+    # Query 2: match scores — explicit query avoids PostgREST FK embed issues
+    scores_result = (
+        supabase.table("match_scores")
+        .select(
+            "application_id, job_fit_score, evidence_confidence_score, "
+            "required_skill_match, preferred_skill_match, "
+            "experience_relevance_score, recommendation"
+        )
+        .eq("application_id", application_id)
+        .execute()
+    )
+    score = scores_result.data[0] if scores_result.data else None
+    application["match_scores"] = [score] if score else []
+
+    # Query 3: candidate user info (separate query — reliable FK resolution)
+    user_result = (
+        supabase.table("users")
+        .select("id, name, email")
+        .eq("id", application["candidate_id"])
+        .execute()
+    )
+    application["candidate"] = user_result.data[0] if user_result.data else {}
+
+    return application

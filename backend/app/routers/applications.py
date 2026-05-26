@@ -1,7 +1,7 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.auth.dependencies import get_current_user, require_candidate, require_recruiter, CurrentUser
-from app.services import application_service
+from app.services import application_service, interview_service
 from app.services.match_service import run_match_scoring
 from app.db.supabase_client import supabase as db
 
@@ -67,6 +67,108 @@ async def get_application_score(
         return {"score": None, "message": "Not yet scored."}
 
     return {"score": result.data[0]}
+
+
+# ── Application detail (recruiter) ───────────────────────────
+
+@router.get("/{application_id}/detail")
+async def get_application_detail(
+    application_id: str,
+    current_user: CurrentUser = Depends(require_recruiter),
+):
+    """
+    Returns full application detail for the recruiter's candidate view.
+    Includes candidate name/email, job info, and match scores.
+    """
+    application = application_service.get_application_for_recruiter(
+        application_id=application_id,
+        recruiter_id=current_user.user_id,
+    )
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found.")
+    return application
+
+
+# ── Interview questions ───────────────────────────────────────
+# POST .../generate → AI suggests (does NOT save) — recruiter reviews
+# POST ...          → saves recruiter-confirmed list (delete-then-insert)
+# GET  ...          → read saved questions
+# DELETE .../id     → recruiter removes a single saved question
+
+@router.post("/{application_id}/questions/generate")
+async def generate_questions(
+    application_id: str,
+    current_user: CurrentUser = Depends(require_recruiter),
+):
+    """
+    Calls Gemini and returns suggested interview questions.
+    Does NOT save anything — recruiter reviews first.
+    """
+    try:
+        questions = interview_service.generate_questions(
+            application_id=application_id,
+            recruiter_id=current_user.user_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {"questions": questions, "total": len(questions)}
+
+
+@router.post("/{application_id}/questions")
+async def save_questions(
+    application_id: str,
+    body: dict,   # {"questions": [{question, question_type, reason}, ...]}
+    current_user: CurrentUser = Depends(require_recruiter),
+):
+    """
+    Saves the recruiter-confirmed interview questions.
+    Replaces any previously saved questions for this application.
+    """
+    questions = body.get("questions", [])
+    try:
+        saved = interview_service.save_questions(
+            application_id=application_id,
+            questions=questions,
+            recruiter_id=current_user.user_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return {"message": f"Saved {len(saved)} questions.", "questions": saved}
+
+
+@router.get("/{application_id}/questions")
+async def get_questions(
+    application_id: str,
+    current_user: CurrentUser = Depends(require_recruiter),
+):
+    """Returns the saved interview questions for an application."""
+    questions = interview_service.get_questions(application_id)
+    return {"questions": questions, "total": len(questions)}
+
+
+@router.delete("/{application_id}/questions/{question_id}")
+async def delete_question(
+    application_id: str,
+    question_id: str,
+    current_user: CurrentUser = Depends(require_recruiter),
+):
+    """Recruiter removes a single interview question."""
+    try:
+        deleted = interview_service.delete_question(
+            question_id=question_id,
+            recruiter_id=current_user.user_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Question not found.")
+
+    return {"message": "Question deleted."}
 
 
 @router.get("/{application_id}")

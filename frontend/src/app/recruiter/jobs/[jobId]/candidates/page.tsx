@@ -136,9 +136,12 @@ export default function CandidatesPage() {
                 {/* Candidate info */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-gray-900">
+                    <Link
+                      href={`/recruiter/applications/${app.id}`}
+                      className="font-semibold text-gray-900 hover:text-blue-600 hover:underline"
+                    >
                       {app.candidate.name || 'Unknown candidate'}
-                    </span>
+                    </Link>
                     {recConfig && (
                       <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${recConfig.className}`}>
                         {recConfig.label}

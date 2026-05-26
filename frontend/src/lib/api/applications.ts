@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut } from '@/lib/api/client'
+import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api/client'
 
 export type ApplicationStatus =
   | 'submitted'
@@ -90,6 +90,34 @@ export interface RecruiterApplication {
   match_scores: FullMatchScore[] | null
 }
 
+export type QuestionType = 'technical' | 'behavioral' | 'evidence_check' | 'role_specific'
+
+export interface InterviewQuestion {
+  id: string
+  application_id: string
+  question: string
+  question_type: QuestionType
+  reason: string | null
+  created_at: string
+}
+
+// Shape returned by /generate (not yet saved — no id/created_at)
+export interface PendingQuestion {
+  question: string
+  question_type: QuestionType
+  reason: string | null
+}
+
+export interface RecruiterApplicationDetail {
+  id: string
+  candidate_id: string
+  status: ApplicationStatus
+  submitted_at: string
+  candidate: { id: string; name: string | null; email: string }
+  jobs: { id: string; title: string }
+  match_scores: FullMatchScore[] | null
+}
+
 /** List all open jobs (for candidate browsing) */
 export const getOpenJobs = () =>
   apiGet<{ jobs: OpenJob[]; total: number }>('/api/jobs/open')
@@ -126,4 +154,34 @@ export const scoreApplication = (applicationId: string) =>
   apiPost<{ message: string; score: FullMatchScore }>(
     `/api/applications/${applicationId}/score`,
     {},
+  )
+
+/** Recruiter: get full application detail with candidate info and scores */
+export const getApplicationDetail = (applicationId: string) =>
+  apiGet<RecruiterApplicationDetail>(`/api/applications/${applicationId}/detail`)
+
+/** Recruiter: ask Gemini to suggest questions — does NOT save */
+export const generateQuestions = (applicationId: string) =>
+  apiPost<{ questions: PendingQuestion[]; total: number }>(
+    `/api/applications/${applicationId}/questions/generate`,
+    {},
+  )
+
+/** Recruiter: save the confirmed questions */
+export const saveQuestions = (applicationId: string, questions: PendingQuestion[]) =>
+  apiPost<{ message: string; questions: InterviewQuestion[] }>(
+    `/api/applications/${applicationId}/questions`,
+    { questions },
+  )
+
+/** Recruiter: get saved questions */
+export const getInterviewQuestions = (applicationId: string) =>
+  apiGet<{ questions: InterviewQuestion[]; total: number }>(
+    `/api/applications/${applicationId}/questions`,
+  )
+
+/** Recruiter: delete one saved question */
+export const deleteInterviewQuestion = (applicationId: string, questionId: string) =>
+  apiDelete<{ message: string }>(
+    `/api/applications/${applicationId}/questions/${questionId}`,
   )
