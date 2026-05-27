@@ -393,3 +393,58 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE OR REPLACE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- ============================================================
+-- TABLE: agent_sessions
+-- One session = one conversation thread for a user.
+-- ============================================================
+CREATE TABLE public.agent_sessions (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id         UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    status          TEXT NOT NULL DEFAULT 'active'
+                        CHECK (status IN ('active', 'archived')),
+    started_at      TIMESTAMPTZ DEFAULT NOW(),
+    last_active_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================================
+-- TABLE: agent_messages
+-- One row per message (user or assistant) in a session.
+-- context stores the page the user was on when the message was sent.
+-- ============================================================
+CREATE TABLE public.agent_messages (
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    session_id  UUID NOT NULL REFERENCES public.agent_sessions(id) ON DELETE CASCADE,
+    role        TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+    content     TEXT NOT NULL,
+    context     JSONB,
+    created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================================
+-- RLS: Users see only their own sessions and messages
+-- ============================================================
+ALTER TABLE public.agent_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.agent_messages ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "agent_sessions_own"
+    ON public.agent_sessions FOR ALL
+    USING (user_id = auth.uid())
+    WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "agent_messages_own"
+    ON public.agent_messages FOR ALL
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.agent_sessions
+            WHERE agent_sessions.id = agent_messages.session_id
+            AND agent_sessions.user_id = auth.uid()
+        )
+    )
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM public.agent_sessions
+            WHERE agent_sessions.id = agent_messages.session_id
+            AND agent_sessions.user_id = auth.uid()
+        )
+    );
